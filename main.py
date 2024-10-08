@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 import ccxt
 import pandas as pd
-import talib
+import ta
 import requests
 from textblob import TextBlob
 from sklearn.ensemble import RandomForestRegressor
