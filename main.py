@@ -162,4 +162,34 @@ async def trade(update: Update, context: CallbackContext):
         timeframe = '1h'
         df = get_market_data(symbol, timeframe)
         if df is None:
-            logger
+            logger.error("Не вдалося отримати ринкові дані.")
+            await notify_error(context, "Не вдалося отримати ринкові дані.")
+            return
+
+        # Додайте тут ваш код для прогнозування та ризик-менеджменту
+        model, scaler = train_model(df)
+        if model is None:
+            await notify_error(context, "Не вдалося навчити модель.")
+            return
+
+        predicted_change = predict_price_change(model, scaler, df)
+        stop_loss, take_profit_1, take_profit_2, take_profit_3 = calculate_risk_management(df['close'].iloc[-1], predicted_change)
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"🔍 Прогноз зміни ціни для {symbol}: {predicted_change:.2f}%\n"
+                 f"📉 Stop-Loss: {stop_loss:.2f}\n"
+                 f"💰 Take-Profit 1: {take_profit_1:.2f}\n"
+                 f"💰 Take-Profit 2: {take_profit_2:.2f}\n"
+                 f"💰 Take-Profit 3: {take_profit_3:.2f}"
+        )
+
+    except Exception as e:
+        logger.error(f"Помилка в команді /trade: {e}")
+        await notify_error(context, f"Помилка в команді /trade: {e}")
+
+# Додайте код для запуску бота, якщо це необхідно
+# application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# application.add_handler(CommandHandler("start", start))
+# application.add_handler(CommandHandler("trade", trade))
+# application.run_polling()
