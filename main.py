@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 import ccxt
 import pandas as pd
-import ta
+import ta  # Використання ta для технічного аналізу
 import requests
 from textblob import TextBlob
 from sklearn.ensemble import RandomForestRegressor
@@ -64,12 +64,19 @@ def get_market_data(symbol, timeframe):
 # Додавання технічних індикаторів
 def add_indicators(df):
     try:
-        df['rsi'] = talib.RSI(df['close'], timeperiod=14)
-        df['upper_band'], df['middle_band'], df['lower_band'] = talib.BBANDS(df['close'], timeperiod=20)
-        df['macd'], df['macd_signal'], _ = talib.MACD(df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
-        df['stoch'] = talib.STOCH(df['high'], df['low'], df['close'])[0]
-        df['cci'] = talib.CCI(df['high'], df['low'], df['close'], timeperiod=20)
-        df['atr'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        df['rsi'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+        bb = ta.volatility.BollingerBands(df['close'], window=20)
+        df['upper_band'] = bb.bollinger_hband()
+        df['middle_band'] = bb.bollinger_mavg()
+        df['lower_band'] = bb.bollinger_lband()
+        macd = ta.trend.MACD(df['close'])
+        df['macd'] = macd.macd()
+        df['macd_signal'] = macd.macd_signal()
+        stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'])
+        df['stoch'] = stoch.stoch()
+        df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], window=20).cci()
+        df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range()
+        
         logger.info("Технічні індикатори успішно додані.")
         return df
     except Exception as e:
@@ -167,63 +174,58 @@ def calculate_risk_management(price, predicted_change):
         return stop_loss, take_profit_1, take_profit_2, take_profit_3
     except Exception as e:
         logger.error(f"Помилка при розрахунку ризик-менеджменту: {e}")
-        return 0, 0, 0, 0
+        return None, None, None, None
 
-# Функція для аналізу ринку та надсилання сигналів
-async def analyze_market_and_send_signals(context: CallbackContext):
+# Основна функція команди /start
+async def start(update: Update, context: CallbackContext):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="🚀 Привіт! Я ваш трейдинг бот. Використовуйте /trade для отримання прогнозу.")
+    logger.info(f"Користувач {update.effective_user.username} почав взаємодію з ботом.")
+
+# Основна функція команди /trade
+async def trade(update: Update, context: CallbackContext):
     try:
-        symbols = get_all_markets()
-        for symbol in symbols:
-            df = get_market_data(symbol, '5m')  # Аналіз кожні 5 хвилин
-            if df is not None and len(df) > 30:
-                model, scaler = train_model(df)
-                if model and scaler:
-                    predicted_change = predict_price_change(model, scaler, df)
-                    current_price = df['close'].iloc[-1]
+        markets = get_all_markets()
+        if not markets:
+            await notify_error(context, "Не вдалося отримати ринки.")
+            return
 
-                    # Перевірка, чи очікуваний профіт більше ніж 30%
-                    if predicted_change > 30:
-                        sentiment_score = analyze_sentiment(symbol)
-                        whale_transactions = get_whale_transactions()
+        symbol = markets[0]  # Вибір першої пари для демонстрації
+        timeframe = '1h'
+        df = get_market_data(symbol, timeframe)
+        if df is None:
+            await notify_error(context, "Не вдалося отримати ринкові дані.")
+            return
 
-                        message = (f"💹 Сигнал для {symbol}:\n"
-                                   f"📈 Прогнозована зміна ціни: {predicted_change:.2f}%\n"
-                                   f"📊 Настрій ринку: {'Позитивний' if sentiment_score > 0 else 'Негативний'}\n"
-                                   f"🐋 Whale Transactions: {'Так' if whale_transactions else 'Ні'}\n"
-                                   f"🚫 Stop-Loss: {stop_loss:.2f}\n"
-                                   f"💰 Take-Profit 1: {take_profit_1:.2f}\n"
-                                   f"💰 Take-Profit 2: {take_profit_2:.2f}\n"
-                                   f"💰 Take-Profit 3: {take_profit_3:.2f}\n")
-                        await context.bot.send_message(chat_id=context.job.context['chat_id'], text=message)
-                        logger.info(f"Сигнал надіслано для {symbol}.")
+        model, scaler = train_model(df)
+        if model is None or scaler is None:
+            await notify_error(context, "Не вдалося навчити модель.")
+            return
+
+        predicted_change = predict_price_change(model, scaler, df)
+        current_price = df['close'].iloc[-1]
+        stop_loss, tp1, tp2, tp3 = calculate_risk_management(current_price, predicted_change)
+
+        message = (f"💹 Прогноз для {symbol}:\n"
+                   f"🔮 Прогнозована зміна ціни: {predicted_change:.2f}%\n"
+                   f"💰 Поточна ціна: {current_price:.2f}\n"
+                   f"🛑 Stop-Loss: {stop_loss:.2f}\n"
+                   f"🚀 Take-Profit 1: {tp1:.2f}\n"
+                   f"🚀 Take-Profit 2: {tp2:.2f}\n"
+                   f"🚀 Take-Profit 3: {tp3:.2f}\n")
+
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+        logger.info(f"Успішно надіслано прогноз для {symbol}.")
     except Exception as e:
-        logger.error(f"Помилка в аналізі ринку та надсиланні сигналів: {e}")
-        await notify_error(context, str(e))
+        await notify_error(context, f"Сталася помилка: {e}")
 
-# Команда для запуску аналізу ринку
-async def start_analysis(update: Update, context: CallbackContext):
-    try:
-        chat_id = update.effective_chat.id
-        context.job_queue.run_repeating(analyze_market_and_send_signals, interval=180, context={'chat_id': chat_id})  # Кожні 3 хвилини
-        await update.message.reply_text("🔍 Аналіз ринку розпочато. Сигнали будуть надсилатися кожні 3 хвилини, якщо виявиться суттєва зміна ринку.")
-    except Exception as e:
-        logger.error(f"Помилка при запуску аналізу: {e}")
-        await notify_error(context, str(e))
+# Основна функція для налаштування бота
+def main():
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# Головна функція для запуску бота
-async def main():
-    try:
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("trade", trade))
 
-        start_handler = CommandHandler('start', start_analysis)
-        application.add_handler(start_handler)
-
-        await application.start()
-        await application.idle()
-    except Exception as e:
-        logger.error(f"Глобальна помилка: {e}")
-        await notify_error(None, str(e))
+    application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
