@@ -14,10 +14,10 @@ from fastdtw import fastdtw
 import os  # Для отримання змінних середовища
 
 # Отримання змінних середовища для Heroku
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-API_KEY = os.getenv('API_KEY')
-API_SECRET = os.getenv('API_SECRET')
-TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
+TELEGRAM_BOT_TOKEN = os.getenv('7775389672:AAH471OO5u6hUm6N7P5YtMtz-qAe2oCmIA0')
+API_KEY = os.getenv('OqbKOtRMY01Ho8KBRw')
+API_SECRET = os.getenv('BdOnFmYMNTWMrCOWEdYIOUh05gyLD5K5M7qd')
+TWITTER_API_KEY = os.getenv('AAAAAAAAAAAAAAAAAAAAAM4QwQEAAAAAU4QHR9h5QhF%2BHPy%2BfLl7f18SvB4%3DxJujcd3GVOJwANTSnKBhn6cGih72Lki5UGd0a0881ZEjkPKaXc')
 
 # Налаштування логування
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
