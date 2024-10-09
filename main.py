@@ -84,7 +84,7 @@ def analyze_sentiment(symbol):
 # Функція для пошуку схожих ситуацій
 def find_similar_situations(df, current_price):
     df['price_change'] = df['close'].pct_change()
-    current_change = df['price_change'].iloc[-1]
+    current_change = df['price_change'].iloc[-1] if not df['price_change'].isnull().all() else 0
 
     # Порівнюємо останні 100 значень з поточним зміною
     similar_situations = df.iloc[-101:-1][(df['price_change'] - current_change).abs() < 0.01]
@@ -94,8 +94,15 @@ def find_similar_situations(df, current_price):
 def train_and_predict(df):
     df = add_indicators(df)
     df['price_change'] = df['close'].pct_change().shift(-1) * 100  # Прогноз у %
-    X = df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma', 'ema']].dropna()
-    y = df['price_change'].dropna()
+    
+    # Видалення рядків з NaN
+    df.dropna(inplace=True)
+
+    if df.empty:
+        return 0  # Повертаємо 0, якщо немає даних для прогнозування
+
+    X = df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma', 'ema']]
+    y = df['price_change']
 
     # Нормалізація даних
     scaler = StandardScaler()
