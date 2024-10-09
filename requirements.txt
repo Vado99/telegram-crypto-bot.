@@ -15,7 +15,7 @@ joblib==1.4.2
 jsonpointer==2.1
 multidict==6.1.0
 nltk==3.9.1
-numpy==2.1.2
+numpy==1.24.4
 pandas==2.2.3
 pandas_ta==0.3.14b0
 pycares==4.4.0
