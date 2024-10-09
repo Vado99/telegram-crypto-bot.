@@ -5,7 +5,7 @@ import pandas_ta as ta  # Використовуємо pandas_ta для інди
 import requests
 from textblob import TextBlob
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
+from telegram.ext import Application, CommandHandler, CallbackContext
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -102,7 +102,7 @@ def train_and_predict(df):
     X_scaled = scaler.fit_transform(X)
     
     # Розбивка на навчальні та тестові дані
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, shuffle=False)
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2)
     
     # Використання нейронної мережі
     model = MLPRegressor(hidden_layer_sizes=(100,), max_iter=500)
@@ -143,6 +143,9 @@ async def analyze_and_send_signal(context: CallbackContext):
             price = df['close'].iloc[-1]
             stop_loss, tp1, tp2, tp3 = calculate_risk_management(price, predicted_change)
             
+            # Обробка ситуації, якщо схожі ситуації недостатні
+            similar_situations_msg = similar_situations[['timestamp', 'close', 'price_change']].tail(5).to_string() if not similar_situations.empty else "Немає схожих ситуацій."
+            
             message = (
                 f"Сигнал для {symbol}:\n"
                 f"Ціна входу: {price:.2f}\n"
@@ -150,7 +153,7 @@ async def analyze_and_send_signal(context: CallbackContext):
                 f"Тейк-профіти: {tp1:.2f}, {tp2:.2f}, {tp3:.2f}\n"
                 f"Прогнозована зміна: {predicted_change:.2f}%\n"
                 f"Обсяг торгів: {trade_volume:.2f} USDT\n"
-                f"Схожі ситуації:\n{similar_situations[['timestamp', 'close', 'price_change']].tail()}"
+                f"Схожі ситуації:\n{similar_situations_msg}"
             )
             await context.bot.send_message(chat_id=context.job.context, text=message)
 
@@ -163,7 +166,7 @@ async def main():
     
     # Планування завдань (кожні 5 хвилин)
     job_queue = application.job_queue
-    job_queue.run_repeating(analyze_and_send_signal, interval=300)
+    job_queue.run_repeating(analyze_and_send_signal, interval=300, first=0)
 
     await application.start()
     await application.updater.start_polling()
