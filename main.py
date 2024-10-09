@@ -9,7 +9,13 @@ from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from config import TELEGRAM_BOT_TOKEN, API_KEY, API_SECRET, TWITTER_API_KEY
+from sklearn.neural_network import MLPRegressor  # Додано для нейронної мережі
+
+# Ваш API-токен для Telegram
+TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
+API_KEY = 'your_bybit_api_key'
+API_SECRET = 'your_bybit_api_secret'
+TWITTER_API_KEY = 'your_twitter_api_key'
 
 # Підключення до ByBit API
 exchange = ccxt.bybit({
@@ -22,7 +28,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Команда для старту
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привіт! Я бот для аналізу ринку криптовалют. Я готовий до роботи!")
+    await update.message.reply_text("Привіт! Я аналітичний бот для трейдингу криптовалют. Я надсилатиму вам сигнали.")
 
 # Команда для допомоги
 async def help_command(update: Update, context: CallbackContext):
@@ -39,39 +45,33 @@ def get_market_data(symbol, timeframe='1h'):
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
     return df
 
+# Отримання обсягу торгів
+def get_trade_volume(symbol):
+    ticker = exchange.fetch_ticker(symbol)
+    return ticker['quoteVolume']  # Отримуємо обсяг у USDT
+
 # Додавання технічних індикаторів за допомогою pandas_ta
 def add_indicators(df):
     # RSI
     df['rsi'] = df.ta.rsi(close=df['close'], length=14)
-
+    
     # Bollinger Bands
     df['upper_band'], df['middle_band'], df['lower_band'] = df.ta.bbands(close=df['close'], length=20, std=2).values.T
-
+    
     # MACD
     macd = df.ta.macd(close=df['close'], fast=12, slow=26, signal=9)
     df['macd'] = macd['MACD_12_26_9']
     df['macd_signal'] = macd['MACDs_12_26_9']
-
-    # SMA (Simple Moving Average)
-    df['sma_50'] = df.ta.sma(close=df['close'], length=50)
-    df['sma_200'] = df.ta.sma(close=df['close'], length=200)
-
-    # EMA (Exponential Moving Average)
-    df['ema_50'] = df.ta.ema(close=df['close'], length=50)
-    df['ema_200'] = df.ta.ema(close=df['close'], length=200)
-
-    # ADX (Average Directional Index)
-    adx = df.ta.adx()
-    df['adx'] = adx['ADX_14']
-
-    # Stochastic Oscillator
-    stoch = df.ta.stoch()
-    df['stoch_k'] = stoch['STOCHk_14_3_3']
-    df['stoch_d'] = stoch['STOCHd_14_3_3']
+    
+    # SMA
+    df['sma'] = df.ta.sma(close=df['close'], length=50)
+    
+    # EMA
+    df['ema'] = df.ta.ema(close=df['close'], length=20)
 
     return df
 
-# Аналіз новин і настрою через Twitter
+# Аналіз настрою ринку через Twitter
 def analyze_sentiment(symbol):
     query = f"{symbol} crypto"
     url = f"https://api.twitter.com/2/tweets/search/recent?query={query}&max_results=100"
@@ -81,25 +81,39 @@ def analyze_sentiment(symbol):
     sentiment_score = sum(TextBlob(tweet['text']).sentiment.polarity for tweet in tweets) / len(tweets) if tweets else 0
     return sentiment_score
 
-# Навчання моделі ШІ та прогноз
+# Функція для пошуку схожих ситуацій
+def find_similar_situations(df, current_price):
+    df['price_change'] = df['close'].pct_change()
+    current_change = df['price_change'].iloc[-1]
+
+    # Порівнюємо останні 100 значень з поточним зміною
+    similar_situations = df.iloc[-101:-1][(df['price_change'] - current_change).abs() < 0.01]
+    return similar_situations
+
+# Прогнозування зміни ціни за допомогою ШІ
 def train_and_predict(df):
     df = add_indicators(df)
     df['price_change'] = df['close'].pct_change().shift(-1) * 100  # Прогноз у %
-    X = df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma_50', 'ema_50', 'adx', 'stoch_k']].dropna()
+    X = df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma', 'ema']].dropna()
     y = df['price_change'].dropna()
-    
+
+    # Нормалізація даних
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+    
+    # Розбивка на навчальні та тестові дані
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, shuffle=False)
     
-    model = RandomForestRegressor(n_estimators=100)
+    # Використання нейронної мережі
+    model = MLPRegressor(hidden_layer_sizes=(100,), max_iter=500)
     model.fit(X_train, y_train)
     
-    X_new = scaler.transform(df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma_50', 'ema_50', 'adx', 'stoch_k']].tail(1))
+    # Прогнозування
+    X_new = scaler.transform(df[['rsi', 'upper_band', 'lower_band', 'macd', 'macd_signal', 'sma', 'ema']].tail(1))
     predicted_change = model.predict(X_new)[0]
     return predicted_change
 
-# Розрахунок ризик-менеджменту та точок входу
+# Розрахунок точок входу, стоп-лосу та профітів
 def calculate_risk_management(price, predicted_change):
     stop_loss = price * (1 - 0.02)  # Стоп-лос на 2%
     take_profit_1 = price * (1 + predicted_change / 100 * 0.5)  # 50% від прогнозу
@@ -109,13 +123,22 @@ def calculate_risk_management(price, predicted_change):
 
 # Функція для аналізу та відправки сигналів
 async def analyze_and_send_signal(context: CallbackContext):
-    symbols = ['BTC/USDT', 'ETH/USDT']  # Можна додати всі торгові пари з ByBit
+    symbols = ['BTC/USDT', 'ETH/USDT']  # Додаємо потрібні торгові пари
     for symbol in symbols:
         df = get_market_data(symbol)
-        if df is None:
+        if df is None or df.empty:
             continue
 
+        # Прогнозування зміни ціни
         predicted_change = train_and_predict(df)
+        
+        # Пошук схожих ситуацій
+        similar_situations = find_similar_situations(df, df['close'].iloc[-1])
+        
+        # Отримання обсягу торгів
+        trade_volume = get_trade_volume(symbol)
+
+        # Генерація сигналів
         if predicted_change >= 30:
             price = df['close'].iloc[-1]
             stop_loss, tp1, tp2, tp3 = calculate_risk_management(price, predicted_change)
@@ -125,11 +148,13 @@ async def analyze_and_send_signal(context: CallbackContext):
                 f"Ціна входу: {price:.2f}\n"
                 f"Стоп-лос: {stop_loss:.2f}\n"
                 f"Тейк-профіти: {tp1:.2f}, {tp2:.2f}, {tp3:.2f}\n"
-                f"Прогнозована зміна: {predicted_change:.2f}%"
+                f"Прогнозована зміна: {predicted_change:.2f}%\n"
+                f"Обсяг торгів: {trade_volume:.2f} USDT\n"
+                f"Схожі ситуації:\n{similar_situations[['timestamp', 'close', 'price_change']].tail()}"
             )
             await context.bot.send_message(chat_id=context.job.context, text=message)
 
-# Основна функція запуску бота
+# Основна функція запуску
 async def main():
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
