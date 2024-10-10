@@ -1,7 +1,7 @@
 import logging
 import ccxt
 import pandas as pd
-import pandas_ta as ta  # Використовуємо pandas_ta для індикаторів
+import pandas_ta as ta
 import requests
 from textblob import TextBlob
 from telegram import Update
@@ -9,13 +9,15 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.neural_network import MLPRegressor  # Нейронна мережа
-import openai  # GPT-3 API
-import numpy as np  # Додаємо цей імпорт для виправлення проблеми з NaN
+from sklearn.neural_network import MLPRegressor
+import openai
 
-# Виправлення проблеми з NaN
-np.NaN = np.nan
-
+# Фікс для імпорту NaN із numpy
+try:
+    from numpy import nan as npNaN
+except ImportError:
+    from numpy import NaN as npNaN
+    
 # Ваш API-токен для Telegram
 TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
 API_KEY = 'your_bybit_api_key'
