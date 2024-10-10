@@ -11,6 +11,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPRegressor  # Нейронна мережа
 import openai  # GPT-3 API
+import numpy as np  # Додаємо цей імпорт для виправлення проблеми з NaN
+
+# Виправлення проблеми з NaN
+np.NaN = np.nan
 
 # Ваш API-токен для Telegram
 TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
