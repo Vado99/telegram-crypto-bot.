@@ -1,6 +1,7 @@
-pandas==2.2.3
+pandas==2.1.0
 pandas-ta==0.3.14b0
 ccxt==4.4.14
+numpy==1.26.0
 textblob==0.18.0.post0
 requests==2.31.0
 python-telegram-bot==20.0
